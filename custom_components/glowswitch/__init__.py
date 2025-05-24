@@ -9,8 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN
-from .coordinator import GlowSwitchCoordinator
-from .glowswitch_api.device import GlowSwitchDevice
+from .coordinator import GenericBTCoordinator # Changed import
+from .generic_bt_api.device import GenericBTDevice # Changed import path and class name
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,10 +24,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     address: str = entry.data[CONF_ADDRESS]
     ble_device = bluetooth.async_ble_device_from_address(hass, address.upper(), True)
     if not ble_device:
-        raise ConfigEntryNotReady(f"Could not find GlowSwitch Device with address {address}")
-    device = GlowSwitchDevice(ble_device)
+        raise ConfigEntryNotReady(f"Could not find GlowSwitch Device with address {address}") # Message can remain specific
+    device = GenericBTDevice(ble_device) # Changed class instantiation
 
-    coordinator = hass.data[DOMAIN][entry.entry_id] = GlowSwitchCoordinator(hass, _LOGGER, ble_device, device, entry.title, entry.unique_id, True)
+    coordinator = hass.data[DOMAIN][entry.entry_id] = GenericBTCoordinator(hass, _LOGGER, ble_device, device, entry.title, entry.unique_id, True) # Changed class instantiation
     entry.async_on_unload(coordinator.async_start())
 
     if not await coordinator.async_wait_ready():

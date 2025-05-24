@@ -5,8 +5,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.light import LightEntityFeature
 
-from custom_components.glowswitch.light import GlowSwitchLight, async_setup_entry
-from custom_components.glowswitch.coordinator import GlowSwitchCoordinator
+from custom_components.glowswitch.light import GenericBTLight, async_setup_entry # Updated import
+from custom_components.glowswitch.coordinator import GenericBTCoordinator # Updated import
 from custom_components.glowswitch.const import DOMAIN
 
 # Mock ConfigEntry data
@@ -20,8 +20,8 @@ MOCK_CONFIG_ENTRY_UNIQUE_ID = "test_unique_id"
 
 @pytest.fixture
 def mock_coordinator():
-    coordinator = MagicMock(spec=GlowSwitchCoordinator)
-    coordinator.device = AsyncMock() # Mocks the GlowSwitchDevice
+    coordinator = MagicMock(spec=GenericBTCoordinator) # Updated spec
+    coordinator.device = AsyncMock() # Mocks the GenericBTDevice
     coordinator.device.write_gatt = AsyncMock()
     coordinator.device_info = {
         "connections": {("bluetooth", "test_address")},
@@ -47,16 +47,16 @@ async def test_async_setup_entry(hass: HomeAssistant, mock_coordinator, mock_con
     await async_setup_entry(hass, mock_config_entry, async_add_entities_mock)
 
     async_add_entities_mock.assert_called_once()
-    # Get the GlowSwitchLight instance from the call arguments
+    # Get the GenericBTLight instance from the call arguments
     light_instance = async_add_entities_mock.call_args[0][0][0]
-    assert isinstance(light_instance, GlowSwitchLight)
+    assert isinstance(light_instance, GenericBTLight) # Updated isinstance check
     assert light_instance.unique_id == f"{MOCK_CONFIG_ENTRY_UNIQUE_ID}_light"
-    assert light_instance.name == "GlowSwitch Light" # As defined in light.py
+    assert light_instance.name == "GlowSwitch Light" # As defined in light.py - This remains
 
 
 async def test_light_turn_on(mock_coordinator, mock_config_entry):
-    """Test the turn_on method of the GlowSwitchLight entity."""
-    light = GlowSwitchLight(mock_coordinator, mock_config_entry)
+    """Test the turn_on method of the GenericBTLight entity."""
+    light = GenericBTLight(mock_coordinator, mock_config_entry) # Updated instantiation
     light.async_write_ha_state = AsyncMock() # Mock this method
 
     assert light.is_on is None # Initial state
@@ -70,8 +70,8 @@ async def test_light_turn_on(mock_coordinator, mock_config_entry):
     light.async_write_ha_state.assert_called_once()
 
 async def test_light_turn_off(mock_coordinator, mock_config_entry):
-    """Test the turn_off method of the GlowSwitchLight entity."""
-    light = GlowSwitchLight(mock_coordinator, mock_config_entry)
+    """Test the turn_off method of the GenericBTLight entity."""
+    light = GenericBTLight(mock_coordinator, mock_config_entry) # Updated instantiation
     light.async_write_ha_state = AsyncMock() # Mock this method
 
     # Set initial state to on for testing turn_off
@@ -88,14 +88,14 @@ async def test_light_turn_off(mock_coordinator, mock_config_entry):
 
 def test_light_is_on_initial(mock_coordinator, mock_config_entry):
     """Test the is_on property initial state."""
-    light = GlowSwitchLight(mock_coordinator, mock_config_entry)
+    light = GenericBTLight(mock_coordinator, mock_config_entry) # Updated instantiation
     assert light.is_on is None # Or False, depending on implementation
 
 def test_light_properties(mock_coordinator, mock_config_entry):
-    """Test basic properties of the GlowSwitchLight entity."""
-    light = GlowSwitchLight(mock_coordinator, mock_config_entry)
+    """Test basic properties of the GenericBTLight entity."""
+    light = GenericBTLight(mock_coordinator, mock_config_entry) # Updated instantiation
     assert light.unique_id == f"{MOCK_CONFIG_ENTRY_UNIQUE_ID}_light"
-    assert light.name == "GlowSwitch Light"
+    assert light.name == "GlowSwitch Light" # This remains
     # As we removed _attr_supported_features, it should default.
     # For a basic on/off light, this might be 0 or None.
     # If specific features are expected by default, test for them.

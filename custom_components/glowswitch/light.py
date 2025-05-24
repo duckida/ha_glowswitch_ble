@@ -9,8 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import GlowSwitchCoordinator
-from .entity import GlowSwitchEntity
+from .coordinator import GenericBTCoordinator # Changed import
+from .entity import GenericBTEntity # Changed import
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,14 +19,14 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: GlowSwitchCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([GlowSwitchLight(coordinator, entry)])
+    coordinator: GenericBTCoordinator = hass.data[DOMAIN][entry.entry_id] # Changed type hint
+    async_add_entities([GenericBTLight(coordinator, entry)]) # Renamed class
 
-class GlowSwitchLight(GlowSwitchEntity, LightEntity):
+class GenericBTLight(GenericBTEntity, LightEntity): # Renamed class and inheritance
     # _attr_supported_features removed to rely on defaults for a basic on/off light
-    _attr_name = "GlowSwitch Light"
+    _attr_name = "GlowSwitch Light" # Name can remain
 
-    def __init__(self, coordinator: GlowSwitchCoordinator, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: GenericBTCoordinator, entry: ConfigEntry) -> None: # Changed type hint
         super().__init__(coordinator)
         self._entry = entry
         # Assuming a unique ID for the light entity based on the entry's unique ID.

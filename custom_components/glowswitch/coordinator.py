@@ -11,16 +11,16 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr # Added import
 from bleak.backends.device import BLEDevice
 
-from .glowswitch_api.device import GlowSwitchDevice
+from .generic_bt_api.device import GenericBTDevice # Changed import path and class name
 from .const import DOMAIN, DEVICE_STARTUP_TIMEOUT_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
-class GlowSwitchCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
-    """Class to manage fetching GlowSwitch data."""
+class GenericBTCoordinator(ActiveBluetoothDataUpdateCoordinator[None]): # Renamed class
+    """Class to manage fetching GlowSwitch data.""" # Docstring can remain if it describes functionality
 
-    def __init__(self, hass: HomeAssistant, logger: logging.Logger, ble_device: BLEDevice, device: GlowSwitchDevice, device_name: str, base_unique_id: str, connectable: bool) -> None:
-        """Initialize global GlowSwitch data updater."""
+    def __init__(self, hass: HomeAssistant, logger: logging.Logger, ble_device: BLEDevice, device: GenericBTDevice, device_name: str, base_unique_id: str, connectable: bool) -> None: # Changed type hint for device
+        """Initialize global GlowSwitch data updater.""" # Docstring can remain
         super().__init__(hass=hass, logger=logger, address=ble_device.address, needs_poll_method=self._needs_poll, poll_method=self._async_update, mode=bluetooth.BluetoothScanningMode.ACTIVE, connectable=connectable)
         self.ble_device = ble_device
         self.device = device
