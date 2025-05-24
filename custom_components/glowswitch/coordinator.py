@@ -8,18 +8,19 @@ import logging
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import ActiveBluetoothDataUpdateCoordinator
 from homeassistant.core import CoreState, HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr # Added import
 from bleak.backends.device import BLEDevice
 
-from .generic_bt_api.device import GenericBTDevice
+from .glowswitch_api.device import GlowSwitchDevice
 from .const import DOMAIN, DEVICE_STARTUP_TIMEOUT_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
-class GenericBTCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
-    """Class to manage fetching generic bt data."""
+class GlowSwitchCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
+    """Class to manage fetching GlowSwitch data."""
 
-    def __init__(self, hass: HomeAssistant, logger: logging.Logger, ble_device: BLEDevice, device: GenericBTDevice, device_name: str, base_unique_id: str, connectable: bool) -> None:
-        """Initialize global generic bt data updater."""
+    def __init__(self, hass: HomeAssistant, logger: logging.Logger, ble_device: BLEDevice, device: GlowSwitchDevice, device_name: str, base_unique_id: str, connectable: bool) -> None:
+        """Initialize global GlowSwitch data updater."""
         super().__init__(hass=hass, logger=logger, address=ble_device.address, needs_poll_method=self._needs_poll, poll_method=self._async_update, mode=bluetooth.BluetoothScanningMode.ACTIVE, connectable=connectable)
         self.ble_device = ble_device
         self.device = device
@@ -27,6 +28,15 @@ class GenericBTCoordinator(ActiveBluetoothDataUpdateCoordinator[None]):
         self.base_unique_id = base_unique_id
         self._ready_event = asyncio.Event()
         self._was_unavailable = True
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        return {
+            "connections": {(dr.CONNECTION_BLUETOOTH, self.ble_device.address)},
+            "name": self.device_name,
+            # Potentially add manufacturer, model if available from self.ble_device or self.device
+        }
 
     @callback
     def _needs_poll(self, service_info: bluetooth.BluetoothServiceInfoBleak, seconds_since_last_poll: float | None) -> bool:

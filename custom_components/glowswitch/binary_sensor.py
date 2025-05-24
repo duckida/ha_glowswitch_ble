@@ -10,8 +10,8 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, Schema
-from .coordinator import GenericBTCoordinator
-from .entity import GenericBTEntity
+from .coordinator import GlowSwitchCoordinator
+from .entity import GlowSwitchEntity
 
 
 # Initialize the logger
@@ -20,21 +20,21 @@ PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    """Set up Generic BT device based on a config entry."""
-    coordinator: GenericBTCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([GenericBTBinarySensor(coordinator)])
+    """Set up GlowSwitch device based on a config entry."""
+    coordinator: GlowSwitchCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([GlowSwitchBinarySensor(coordinator)])
 
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service("write_gatt", Schema.WRITE_GATT.value, "write_gatt")
     platform.async_register_entity_service("read_gatt", Schema.READ_GATT.value, "read_gatt")
 
 
-class GenericBTBinarySensor(GenericBTEntity, BinarySensorEntity):
-    """Representation of a Generic BT Binary Sensor."""
+class GlowSwitchBinarySensor(GlowSwitchEntity, BinarySensorEntity):
+    """Representation of a GlowSwitch Binary Sensor."""
 
     _attr_name = None
 
-    def __init__(self, coordinator: GenericBTCoordinator) -> None:
+    def __init__(self, coordinator: GlowSwitchCoordinator) -> None:
         """Initialize the Device."""
         super().__init__(coordinator)
 
