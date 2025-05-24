@@ -1,12 +1,12 @@
 {
-  "domain": "generic_bt",
-  "name": "Generic Bluetooth",
-  "codeowners": ["@fuatakgun"],
+  "domain": "glowswitch_ble",
+  "name": "Glowsiwtch BLE",
+  "codeowners": ["@duckida"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "iot_class": "local_push",
-  "integration_type": "hub",
+  "integration_type": "device",
   "version": "1.0.0",
-  "documentation": "https://github.com/fuatakgun/generic_bt",
-  "issue_tracker": "https://github.com/fuatakgun/generic_bt/issues"
+  "documentation": "https://github.com/duckida/ha_glowswitch_ble",
+  "issue_tracker": "https://github.com/duckida/ha_glowswitch_ble/issues"
 }
