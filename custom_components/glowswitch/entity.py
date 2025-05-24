@@ -6,17 +6,17 @@ import logging
 from homeassistant.components.bluetooth.passive_update_coordinator import PassiveBluetoothCoordinatorEntity
 from homeassistant.helpers import device_registry as dr
 
-from .coordinator import GenericBTCoordinator
+from .coordinator import GenericBTCoordinator # Changed import
 
 _LOGGER = logging.getLogger(__name__)
 
-class GenericBTEntity(PassiveBluetoothCoordinatorEntity[GenericBTCoordinator]):
-    """Generic entity encapsulating common features of Generic BT device."""
+class GenericBTEntity(PassiveBluetoothCoordinatorEntity[GenericBTCoordinator]): # Renamed class and type hint
+    """Generic entity encapsulating common features of GlowSwitch device.""" # Docstring can remain
 
-    _device: GenericBTDevice
+    _device: GenericBTDevice # Changed type hint
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: GenericBTCoordinator) -> None:
+    def __init__(self, coordinator: GenericBTCoordinator) -> None: # Changed type hint
         """Initialize the entity."""
         super().__init__(coordinator)
         self._device = coordinator.device
