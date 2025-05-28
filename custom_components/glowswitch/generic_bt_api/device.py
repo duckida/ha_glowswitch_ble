@@ -23,7 +23,13 @@ class GenericBTDevice:
         pass
 
     async def stop(self):
-            pass
+        _LOGGER.debug("Stopping GenericBTDevice, ensuring client is disconnected.")
+        async with self._lock:
+            if self._client:
+                _LOGGER.debug("Closing client stack due to stop call.")
+                await self._client_stack.pop_all().aclose()
+            self._client = None
+            self._client_stack = AsyncExitStack() # Re-initialize just in case
 
     @property
     def connected(self):
@@ -75,5 +81,11 @@ class GenericBTDevice:
             else:
                 raise e
 
-    def update_from_advertisement(self, advertisement):
-        pass
+    async def update_from_advertisement(self, advertisement):
+        _LOGGER.debug("Device available after being unavailable (reconnect or fresh advertisement). Resetting BLE client to ensure fresh connection and service discovery.")
+        async with self._lock:
+            if self._client:
+                _LOGGER.debug("Closing existing client stack.")
+                await self._client_stack.pop_all().aclose()
+            self._client = None
+            self._client_stack = AsyncExitStack() # Re-initialize for future connections
