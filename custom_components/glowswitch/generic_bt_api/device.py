@@ -50,6 +50,39 @@ class GenericBTDevice:
             else:
                 _LOGGER.debug("Connection reused")
 
+    async def ensure_connected_and_services_discovered(self):
+        _LOGGER.debug("Attempting to ensure client is connected and services are discovered.")
+        try:
+            # Step 1: Ensure client is available and connected.
+            # get_client() will attempt to connect or reconnect if self._client is None or becomes invalid.
+            # It will raise an error if connection fails.
+            await self.get_client()
+
+            # Step 2: Explicitly discover/re-discover services.
+            # We need to ensure self._client is not None after get_client() call.
+            if not self._client:
+                _LOGGER.warning("No client available after get_client attempt. Cannot discover services.")
+                # Raise an exception or return a status indicating failure
+                raise BleakError("Failed to establish a client connection.")
+
+            # At this point, self._client should be a connected BleakClient instance.
+            # BleakClient itself attempts service discovery on connect.
+            # Calling get_services() here is an explicit way to ensure it's done
+            # or to re-trigger it if necessary.
+            _LOGGER.debug("Client available, explicitly calling get_services().")
+            await self._client.get_services()
+            _LOGGER.debug("Service discovery call completed.")
+
+        except BleakError as e:
+            _LOGGER.error(f"BleakError during ensure_connected_and_services_discovered: {e}", exc_info=True)
+            # Re-raise the original BleakError to be handled by the caller (light.py)
+            raise
+        except Exception as e:
+            # Catch any other unexpected errors
+            _LOGGER.error(f"Unexpected error during ensure_connected_and_services_discovered: {e}", exc_info=True)
+            # Wrap in a BleakError or a custom error if appropriate, then re-raise
+            raise BleakError(f"Unexpected issue in ensure_connected_and_services_discovered: {e}") from e
+
     async def write_gatt(self, target_uuid, data):
         await self.get_client()
         uuid_str = "{" + target_uuid + "}"
