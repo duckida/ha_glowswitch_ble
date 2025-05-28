@@ -49,15 +49,31 @@ class GenericBTDevice:
         uuid_str = "{" + target_uuid + "}"
         uuid = UUID(uuid_str)
         data_as_bytes = bytearray.fromhex(data)
-        await self._client.write_gatt_char(uuid, data_as_bytes, True)
+        try:
+            await self._client.write_gatt_char(uuid, data_as_bytes, True)
+        except BleakError as e:
+            if "service discovery not yet completed" in str(e).lower():
+                _LOGGER.debug("Service discovery not yet completed on write, attempting to rediscover services and retry.")
+                await self._client.get_services()
+                await self._client.write_gatt_char(uuid, data_as_bytes, True)
+            else:
+                raise e
 
     async def read_gatt(self, target_uuid):
         await self.get_client()
         uuid_str = "{" + target_uuid + "}"
         uuid = UUID(uuid_str)
-        data = await self._client.read_gatt_char(uuid)
-        print(data)
-        return data
+        try:
+            data = await self._client.read_gatt_char(uuid)
+            print(data)
+            return data
+        except BleakError as e:
+            if "service discovery not yet completed" in str(e).lower():
+                _LOGGER.debug("Service discovery not yet completed on read, attempting to rediscover services and retry.")
+                await self._client.get_services()
+                return await self._client.read_gatt_char(uuid)
+            else:
+                raise e
 
     def update_from_advertisement(self, advertisement):
         pass
