@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any # Added for **kwargs
 
-from homeassistant.components.light import LightEntity, LightEntityFeature, ATTR_BRIGHTNESS
+from homeassistant.components.light import ColorMode, LightEntity, LightEntityFeature, ATTR_BRIGHTNESS
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -38,9 +38,22 @@ class GenericBTLight(GenericBTEntity, LightEntity): # Renamed class and inherita
     @property
     def supported_features(self) -> LightEntityFeature:
         """Flag supported features."""
+        # BRIGHTNESS is handled by color_modes. Other features like EFFECT could be added here.
+        return LightEntityFeature(0)
+
+    @property
+    def supported_color_modes(self) -> set[ColorMode]:
+        """Return the set of supported color modes."""
         if self._device_type == "glowdim":
-            return LightEntityFeature.BRIGHTNESS
-        return LightEntityFeature(0) # No specific features for glowswitch
+            return {ColorMode.BRIGHTNESS}
+        return {ColorMode.ONOFF}
+
+    @property
+    def color_mode(self) -> ColorMode:
+        """Return the current color mode of the light."""
+        if self._device_type == "glowdim":
+            return ColorMode.BRIGHTNESS
+        return ColorMode.ONOFF
 
     @property
     def brightness(self) -> int | None:

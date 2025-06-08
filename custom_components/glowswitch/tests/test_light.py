@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.light import LightEntityFeature, ATTR_BRIGHTNESS # Added ATTR_BRIGHTNESS
+from homeassistant.components.light import ColorMode, LightEntityFeature, ATTR_BRIGHTNESS # Added ColorMode
 
 from custom_components.glowswitch.light import GenericBTLight, async_setup_entry
 from custom_components.glowswitch.coordinator import GenericBTCoordinator
@@ -98,8 +98,10 @@ def test_light_properties_glowswitch(mock_coordinator, mock_config_entry):
     light = GenericBTLight(mock_coordinator, mock_config_entry)
     assert light.unique_id == f"{MOCK_CONFIG_ENTRY_UNIQUE_ID}_light"
     assert light.name == "GlowSwitch Light"
-    assert light.supported_features == LightEntityFeature(0) # Explicitly 0 for no features
+    assert light.supported_features == LightEntityFeature(0)
     assert light.brightness is None
+    assert light.supported_color_modes == {ColorMode.ONOFF}
+    assert light.color_mode == ColorMode.ONOFF
 
 # --- Tests for "glowdim" device type ---
 
@@ -110,9 +112,11 @@ def test_light_properties_glowdim(mock_coordinator, mock_config_entry):
 
     assert light.unique_id == f"{MOCK_CONFIG_ENTRY_UNIQUE_ID}_light"
     assert light.name == "GlowSwitch Light"
-    assert light.supported_features == LightEntityFeature.BRIGHTNESS
+    assert light.supported_features == LightEntityFeature(0) # Brightness is now via color modes
     assert light.brightness == 255 # Initial HA brightness
     assert light.is_on is None
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    assert light.color_mode == ColorMode.BRIGHTNESS
 
 async def test_light_turn_on_glowdim_with_brightness(mock_coordinator, mock_config_entry):
     """Test turning on a glowdim device with specified brightness."""
