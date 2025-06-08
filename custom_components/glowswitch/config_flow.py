@@ -17,7 +17,8 @@ from .generic_bt_api.device import GenericBTDevice # Changed import path and cla
 
 _LOGGER = logging.getLogger(__name__)
 
-# GLOWDIM_SERVICE_UUID constant removed
+GLOWDIM_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdefA"
+GLOWSWITCH_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for GlowSwitch."""
@@ -57,12 +58,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._discovered_devices[processed_discovery_info.address] = processed_discovery_info
 
         if processed_discovery_info:
-            local_name = processed_discovery_info.name
-            # Determine device_type for the specific device being processed based on its name
-            if "glowdim" in local_name.lower():
-                device_type = "glowdim"
-            else:
-                device_type = "glowswitch"
+            local_name = processed_discovery_info.name # Used for the title
+            device_type = "glowswitch" # Default device type
+
+            if processed_discovery_info.advertisement and processed_discovery_info.advertisement.service_uuids:
+                service_uuids_lower = [str(s).lower() for s in processed_discovery_info.advertisement.service_uuids]
+                if GLOWDIM_SERVICE_UUID.lower() in service_uuids_lower:
+                    device_type = "glowdim"
+                elif GLOWSWITCH_SERVICE_UUID.lower() in service_uuids_lower:
+                    device_type = "glowswitch"
+            # If neither specific UUID is found, it remains the default "glowswitch".
 
             # If user_input is present, we are trying to create the entry
             if user_input is not None:

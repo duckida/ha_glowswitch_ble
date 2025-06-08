@@ -69,12 +69,12 @@ class GenericBTLight(GenericBTEntity, LightEntity): # Renamed class and inherita
                 device_brightness_value = round(current_ha_brightness / 255 * 100)
                 # Ensure value is within 0-100 range
                 device_brightness_value = max(0, min(100, device_brightness_value))
-
-                _LOGGER.debug(f"Turning on {self.name} ({self._device_type}) to brightness {current_ha_brightness}/255 -> device value {device_brightness_value}/100")
-                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", bytes([device_brightness_value]))
+                hex_data = f"{device_brightness_value:02x}"
+                _LOGGER.debug(f"Turning on {self.name} ({self._device_type}) to brightness {current_ha_brightness}/255 -> device value {device_brightness_value}/100 -> hex string {hex_data}")
+                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", hex_data)
             else: # glowswitch
                 _LOGGER.debug(f"Turning on {self.name} ({self._device_type})")
-                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", bytes("01", "utf-8"))
+                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", "01")
 
             self._is_on = True
             self.async_write_ha_state()
@@ -86,10 +86,10 @@ class GenericBTLight(GenericBTEntity, LightEntity): # Renamed class and inherita
         try:
             if self._device_type == "glowdim":
                 _LOGGER.debug(f"Turning off {self.name} ({self._device_type})")
-                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", bytes([0x00]))
+                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", "00")
             else: # glowswitch
                 _LOGGER.debug(f"Turning off {self.name} ({self._device_type})")
-                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", bytes("00", "utf-8"))
+                await self._device.write_gatt("12345678-1234-5678-1234-56789abcdef1", "00")
 
             self._is_on = False
             self.async_write_ha_state()

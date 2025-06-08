@@ -65,7 +65,7 @@ async def test_light_turn_on_glowswitch(mock_coordinator, mock_config_entry):
     await light.async_turn_on()
 
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes("01", "utf-8")
+        "12345678-1234-5678-1234-56789abcdef1", "01"
     )
     assert light.is_on is True
     light.async_write_ha_state.assert_called_once()
@@ -81,7 +81,7 @@ async def test_light_turn_off_glowswitch(mock_coordinator, mock_config_entry):
     await light.async_turn_off()
 
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes("00", "utf-8")
+        "12345678-1234-5678-1234-56789abcdef1", "00"
     )
     assert light.is_on is False
     light.async_write_ha_state.assert_called_once()
@@ -122,9 +122,9 @@ async def test_light_turn_on_glowdim_with_brightness(mock_coordinator, mock_conf
 
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 128})
 
-    # HA 128 -> Device (128/255 * 100) = 50.196... -> rounded to 50
+    # HA 128 -> Device (128/255 * 100) = 50.196... -> rounded to 50. 50 decimal is "32" hex.
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes([50])
+        "12345678-1234-5678-1234-56789abcdef1", "32"
     )
     assert light.is_on is True
     assert light.brightness == 128
@@ -139,8 +139,9 @@ async def test_light_turn_on_glowdim_without_brightness_initial(mock_coordinator
     # Initial brightness is 255, so device value should be 100
     await light.async_turn_on()
 
+    # Initial brightness is 255 (HA), device value 100, hex "64"
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes([100])
+        "12345678-1234-5678-1234-56789abcdef1", "64"
     )
     assert light.is_on is True
     assert light.brightness == 255 # Stays at initial full brightness
@@ -156,8 +157,9 @@ async def test_light_turn_on_glowdim_without_brightness_after_set(mock_coordinat
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 77}) # HA 77 -> Device (77/255 * 100) = 30.19 -> 30
     assert light.is_on is True
     assert light.brightness == 77
+    # HA 77 -> Device (77/255 * 100) = 30.19 -> 30. 30 decimal is "1e" hex.
     mock_coordinator.device.write_gatt.assert_called_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes([30])
+        "12345678-1234-5678-1234-56789abcdef1", "1e"
     )
     light.async_write_ha_state.assert_called_once()
 
@@ -169,9 +171,9 @@ async def test_light_turn_on_glowdim_without_brightness_after_set(mock_coordinat
     # Turn on again without specifying brightness
     await light.async_turn_on()
 
-    # Should use the previously set brightness (77 HA -> 30 device)
+    # Should use the previously set brightness (77 HA -> 30 device -> "1e" hex)
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes([30])
+        "12345678-1234-5678-1234-56789abcdef1", "1e"
     )
     assert light.is_on is True
     assert light.brightness == 77 # Brightness remains as previously set
@@ -191,8 +193,9 @@ async def test_light_turn_off_glowdim(mock_coordinator, mock_config_entry):
 
     await light.async_turn_off()
 
+    # Turn off command for glowdim is "00"
     mock_coordinator.device.write_gatt.assert_called_once_with(
-        "12345678-1234-5678-1234-56789abcdef1", bytes([0x00])
+        "12345678-1234-5678-1234-56789abcdef1", "00"
     )
     assert light.is_on is False
     # Brightness should remain as it was, for next turn_on

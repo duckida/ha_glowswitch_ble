@@ -10,7 +10,8 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.helpers.service_info.bluetooth import BluetoothServiceInfo
 
-from custom_components.glowswitch.config_flow import ConfigFlow # GLOWDIM_SERVICE_UUID removed
+# Import the actual UUIDs from config_flow to ensure tests use the same values
+from custom_components.glowswitch.config_flow import ConfigFlow, GLOWDIM_SERVICE_UUID, GLOWSWITCH_SERVICE_UUID
 from custom_components.glowswitch.const import DOMAIN
 
 # Define a common test address
@@ -73,11 +74,11 @@ async def inicia_config_flow(hass: HomeAssistant, service_info: BluetoothService
     )
     return result
 
-async def test_initial_discovery_glowdim_by_name(hass: HomeAssistant, mock_ha_config_flow_manager):
-    """Test discovery for a Glowdim device identified by name."""
+async def test_discovery_glowdim_by_uuid(hass: HomeAssistant, mock_ha_config_flow_manager):
+    """Test discovery for a Glowdim device identified by its Service UUID."""
     service_info = generate_ble_service_info(
-        name="My glowdim Device", # Name contains "glowdim"
-        service_uuids=[] # Service UUIDs are irrelevant now for differentiation
+        name="Glowdim Device", # Name is arbitrary
+        service_uuids=[GLOWDIM_SERVICE_UUID]
     )
     result = await inicia_config_flow(hass, service_info)
     assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
@@ -87,14 +88,64 @@ async def test_initial_discovery_glowdim_by_name(hass: HomeAssistant, mock_ha_co
         result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
     )
     assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result2["title"] == "My glowdim Device"
+    assert result2["title"] == "Glowdim Device"
     assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
     assert result2["data"]["device_type"] == "glowdim"
 
-async def test_initial_discovery_glowdim_by_name_case_insensitive(hass: HomeAssistant, mock_ha_config_flow_manager):
-    """Test discovery for a Glowdim device with case-insensitive name match."""
+async def test_discovery_glowswitch_by_uuid(hass: HomeAssistant, mock_ha_config_flow_manager):
+    """Test discovery for a Glowswitch device identified by its Service UUID."""
     service_info = generate_ble_service_info(
-        name="Official GLOWDIM Model X",
+        name="Glowswitch Device", # Name is arbitrary
+        service_uuids=[GLOWSWITCH_SERVICE_UUID]
+    )
+    result = await inicia_config_flow(hass, service_info)
+    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+    assert result["step_id"] == "user"
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
+    )
+    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
+    assert result2["title"] == "Glowswitch Device"
+    assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
+    assert result2["data"]["device_type"] == "glowswitch"
+
+async def test_discovery_glowdim_priority_both_uuids(hass: HomeAssistant, mock_ha_config_flow_manager):
+    """Test Glowdim identification if both known Service UUIDs are advertised."""
+    service_info = generate_ble_service_info(
+        name="Dual UUID Device",
+        service_uuids=[GLOWDIM_SERVICE_UUID, GLOWSWITCH_SERVICE_UUID]
+    )
+    result = await inicia_config_flow(hass, service_info)
+    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
+    )
+    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
+    assert result2["title"] == "Dual UUID Device"
+    assert result2["data"]["device_type"] == "glowdim" # Glowdim UUID should take priority
+
+async def test_discovery_default_glowswitch_no_known_uuids(hass: HomeAssistant, mock_ha_config_flow_manager):
+    """Test device defaults to glowswitch if no known Service UUIDs are advertised."""
+    service_info = generate_ble_service_info(
+        name="Unknown Device",
+        service_uuids=["some-random-uuid-1234", "another-unknown-uuid-5678"] # No known UUIDs
+    )
+    result = await inicia_config_flow(hass, service_info)
+    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
+    )
+    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
+    assert result2["title"] == "Unknown Device"
+    assert result2["data"]["device_type"] == "glowswitch" # Should default to glowswitch
+
+async def test_discovery_default_glowswitch_empty_uuids(hass: HomeAssistant, mock_ha_config_flow_manager):
+    """Test device defaults to glowswitch if service UUIDs list is empty."""
+    service_info = generate_ble_service_info(
+        name="Empty UUIDs Device",
         service_uuids=[]
     )
     result = await inicia_config_flow(hass, service_info)
@@ -104,76 +155,8 @@ async def test_initial_discovery_glowdim_by_name_case_insensitive(hass: HomeAssi
         result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
     )
     assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result2["title"] == "Official GLOWDIM Model X"
-    assert result2["data"]["device_type"] == "glowdim"
-
-async def test_initial_discovery_glowswitch_by_name(hass: HomeAssistant, mock_ha_config_flow_manager):
-    """Test discovery for a Glowswitch device (name does not contain 'glowdim')."""
-    service_info = generate_ble_service_info(
-        name="Test Glowswitch",
-        service_uuids=[] # Service UUIDs irrelevant
-    )
-    result = await inicia_config_flow(hass, service_info)
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-    assert result["step_id"] == "user"
-
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
-    )
-    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result2["title"] == "Test Glowswitch"
-    assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
-    assert result2["data"]["device_type"] == "glowswitch"
-
-# Removed test_discovery_glowdim_uuid_and_glowdim_name as UUID logic is gone.
-# Name-based identification is covered by test_initial_discovery_glowdim_by_name.
-
-# Removed test_discovery_glowswitch_with_glowdim_in_name_no_uuid as its premise
-# (UUID priority making "glowdim" in name secondary) is no longer valid.
-# Now, "glowdim" in name IS the primary identifier for glowdim type.
-# This scenario is covered by test_initial_discovery_glowdim_by_name.
-
-async def test_discovery_glowswitch_empty_service_uuids(hass: HomeAssistant, mock_ha_config_flow_manager):
-    """Test device with empty service UUIDs list, should be glowswitch if name doesn't indicate glowdim."""
-    service_info = generate_ble_service_info(
-        name="Basic Switch",
-        service_uuids=[] # Empty list
-    )
-    result = await inicia_config_flow(hass, service_info)
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
-    )
-    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result2["title"] == "Basic Switch"
-    assert result2["data"]["device_type"] == "glowswitch"
-
-async def test_discovery_advertisement_missing(hass: HomeAssistant, mock_ha_config_flow_manager):
-    """Test device where advertisement or service_uuids might be missing."""
-    # BluetoothServiceInfoBleak requires advertisement, but service_uuids can be missing from it.
-    # The generate_ble_service_info helper ensures advertisement object exists.
-    # Let's test with service_uuids=None in the helper.
-    service_info = generate_ble_service_info(
-        name="Device No UUIDs",
-        service_uuids=None
-    )
-    # The BluetoothServiceInfoBleak constructor will turn service_uuids=None into advertisement.service_uuids = []
-    # So this test becomes similar to empty_service_uuids.
-    # The actual check in config_flow is `if processed_discovery_info.advertisement and processed_discovery_info.advertisement.service_uuids:`
-    # The `advertisement` object itself could be None if not for the BluetoothServiceInfoBleak constructor.
-    # Our `generate_ble_service_info` mocks `advertisement` so it's not None.
-    # If `processed_discovery_info.advertisement.service_uuids` is empty, it's handled.
-
-    result = await inicia_config_flow(hass, service_info)
-    assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
-
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input={CONF_ADDRESS: TEST_ADDRESS}
-    )
-    assert result2["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
-    assert result2["title"] == "Device No UUIDs"
-    assert result2["data"]["device_type"] == "glowswitch"
+    assert result2["title"] == "Empty UUIDs Device"
+    assert result2["data"]["device_type"] == "glowswitch" # Should default to glowswitch
 
 @patch("homeassistant.components.bluetooth.async_discovered_service_info")
 async def test_user_step_no_devices_found(mock_async_discovered_service_info, hass: HomeAssistant, mock_ha_config_flow_manager):
