@@ -11,12 +11,17 @@ from bleak.exc import BleakError
 _LOGGER = logging.getLogger(__name__)
 
 
+class IdealLedTimeout(Exception):
+    """Custom timeout exception."""
+
+class IdealLedBleakError(Exception):
+    """Custom BleakError wrapper."""
+
+
 class GenericBTDevice:
     """Generic BT Device Class"""
     def __init__(self, ble_device):
         self._ble_device = ble_device
-        self._client: BleakClient | None = None
-        self._client_stack = AsyncExitStack()
         self._lock = asyncio.Lock()
 
     async def update(self):
@@ -25,39 +30,43 @@ class GenericBTDevice:
     async def stop(self):
             pass
 
-    @property
-    def connected(self):
-        return not self._client is None
-
-    async def get_client(self):
-        async with self._lock:
-            if not self._client:
-                _LOGGER.debug("Connecting")
-                try:
-                    self._client = await self._client_stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.debug("Timeout on connect", exc_info=True)
-                    raise IdealLedTimeout("Timeout on connect") from exc
-                except BleakError as exc:
-                    _LOGGER.debug("Error on connect", exc_info=True)
-                    raise IdealLedBleakError("Error on connect") from exc
-            else:
-                _LOGGER.debug("Connection reused")
-
     async def write_gatt(self, target_uuid, data):
-        await self.get_client()
-        uuid_str = "{" + target_uuid + "}"
-        uuid = UUID(uuid_str)
-        data_as_bytes = bytearray.fromhex(data)
-        await self._client.write_gatt_char(uuid, data_as_bytes, True)
+        async with self._lock:
+            async with AsyncExitStack() as stack:
+                try:
+                    client = await stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
+                    _LOGGER.debug(f"Connected to {self._ble_device.address} for write")
+
+                    uuid_str = "{" + target_uuid + "}"
+                    uuid = UUID(uuid_str)
+                    data_as_bytes = bytearray.fromhex(data)
+                    await client.write_gatt_char(uuid, data_as_bytes, True)
+                    _LOGGER.debug(f"Data written to {uuid_str}")
+                except asyncio.TimeoutError as exc:
+                    _LOGGER.warning(f"Timeout on write to {self._ble_device.address}: {exc}")
+                    raise IdealLedTimeout(f"Timeout on write to {self._ble_device.address}") from exc
+                except BleakError as exc:
+                    _LOGGER.warning(f"BleakError on write to {self._ble_device.address}: {exc}")
+                    raise IdealLedBleakError(f"BleakError on write to {self._ble_device.address}") from exc
 
     async def read_gatt(self, target_uuid):
-        await self.get_client()
-        uuid_str = "{" + target_uuid + "}"
-        uuid = UUID(uuid_str)
-        data = await self._client.read_gatt_char(uuid)
-        print(data)
-        return data
+        async with self._lock:
+            async with AsyncExitStack() as stack:
+                try:
+                    client = await stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
+                    _LOGGER.debug(f"Connected to {self._ble_device.address} for read")
+
+                    uuid_str = "{" + target_uuid + "}"
+                    uuid = UUID(uuid_str)
+                    data = await client.read_gatt_char(uuid)
+                    _LOGGER.debug(f"Data read from {uuid_str}: {data.hex()}")
+                    return data
+                except asyncio.TimeoutError as exc:
+                    _LOGGER.warning(f"Timeout on read from {self._ble_device.address}: {exc}")
+                    raise IdealLedTimeout(f"Timeout on read from {self._ble_device.address}") from exc
+                except BleakError as exc:
+                    _LOGGER.warning(f"BleakError on read from {self._ble_device.address}: {exc}")
+                    raise IdealLedBleakError(f"BleakError on read from {self._ble_device.address}") from exc
 
     def update_from_advertisement(self, advertisement):
         pass
