@@ -17,6 +17,8 @@ from .generic_bt_api.device import GenericBTDevice # Changed import path and cla
 
 _LOGGER = logging.getLogger(__name__)
 
+# GLOWDIM_SERVICE_UUID constant removed
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for GlowSwitch."""
 
@@ -56,8 +58,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if processed_discovery_info:
             local_name = processed_discovery_info.name
-            # Determine device_type for the specific device being processed
-            device_type = "glowdim" if "glowdim" in local_name.lower() else "glowswitch"
+            # Determine device_type for the specific device being processed based on its name
+            if "glowdim" in local_name.lower():
+                device_type = "glowdim"
+            else:
+                device_type = "glowswitch"
 
             # If user_input is present, we are trying to create the entry
             if user_input is not None:
