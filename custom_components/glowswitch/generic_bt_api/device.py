@@ -35,6 +35,7 @@ class GenericBTDevice:
                 _LOGGER.debug("Connecting")
                 try:
                     self._client = await self._client_stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
+                    _LOGGER.debug("Successfully connected to device %s", self._ble_device.address)
                 except asyncio.TimeoutError as exc:
                     _LOGGER.debug("Timeout on connect", exc_info=True)
                     raise IdealLedTimeout("Timeout on connect") from exc
@@ -49,7 +50,24 @@ class GenericBTDevice:
         uuid_str = "{" + target_uuid + "}"
         uuid = UUID(uuid_str)
         data_as_bytes = bytearray.fromhex(data)
-        await self._client.write_gatt_char(uuid, data_as_bytes, True)
+        try:
+            await self._client.write_gatt_char(uuid, data_as_bytes, True)
+        except BleakError as e:
+            if "Service Discovery has not been performed" in str(e):
+                _LOGGER.error("Service discovery error during write_gatt: %s. Reconnecting and retrying.", e)
+                # Ensure the existing client is properly closed
+                await self._client_stack.pop_all().aclose()
+                self._client = None
+                # Reconnect (includes service discovery)
+                await self.get_client()
+                # Retry the write operation once
+                try:
+                    await self._client.write_gatt_char(uuid, data_as_bytes, True)
+                except BleakError as retry_e:
+                    _LOGGER.error("Retry failed after service discovery error: %s", retry_e)
+                    raise retry_e  # Re-raise if retry also fails
+            else:
+                raise e  # Re-raise other BleakErrors immediately
 
     async def read_gatt(self, target_uuid):
         await self.get_client()
