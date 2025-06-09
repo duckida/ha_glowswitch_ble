@@ -1,282 +1,309 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio # Ensure asyncio is imported for patching sleep
+from unittest.mock import AsyncMock, MagicMock, patch, call # call for checking sequence of log calls
 from uuid import UUID
 
 from bleak.exc import BleakError
 from bleak.backends.device import BLEDevice
 
-from custom_components.glowswitch.generic_bt_api.device import GenericBTDevice, _LOGGER
+from custom_components.glowswitch.generic_bt_api.device import (
+    GenericBTDevice,
+    _LOGGER, # Keep for direct assertion if needed, though MockLogger from patch is primary
+    IdealLedTimeout,
+    IdealLedBleakError # Import if used by tests
+)
 
-# A valid UUID string for testing
-TEST_UUID = "00001101-0000-1000-8000-00805f9b34fb"
-TEST_DATA = "aabbcc"
+# Constants for tests
+TEST_UUID_STR = "00001101-0000-1000-8000-00805f9b34fb"
+TEST_DATA_HEX = "aabbcc"
+SERVICE_DISCOVERY_ERROR_MSG = "Service Discovery has not been performed"
 
-@pytest.mark.asyncio
-async def test_write_gatt_retry_succeeds():
-    """Test write_gatt when the first attempt fails with service discovery error, and retry succeeds."""
-    mock_ble_device = MagicMock(spec=BLEDevice)
-    mock_ble_device.address = "test_address"
+# Helper to create a standard BLEDevice mock
+def create_mock_ble_device(address="test_address"):
+    dev = MagicMock(spec=BLEDevice)
+    dev.address = address
+    return dev
 
-    # Mock for the BleakClient instance
-    mock_bleak_client_instance = AsyncMock(spec=BleakClient)
-    mock_bleak_client_instance.write_gatt_char = AsyncMock(
-        side_effect=[
-            BleakError("Service Discovery has not been performed"), # First call fails
-            None  # Second call succeeds
-        ]
-    )
-    mock_bleak_client_instance.read_gatt_char = AsyncMock() # Add if get_client is called for other reasons
+# Helper to create a mock BleakClient instance
+def create_mock_bleak_client_instance():
+    client = AsyncMock(spec=BleakClient)
+    client.name = "mock_bleak_client_instance"
+    return client
 
-    # Mock for AsyncExitStack instance and its methods
-    mock_aclose = AsyncMock()
-    mock_pop_all_result = MagicMock()
-    mock_pop_all_result.aclose = mock_aclose
-
-    mock_async_exit_stack_instance = MagicMock(spec=AsyncExitStack)
-    mock_async_exit_stack_instance.enter_async_context = AsyncMock(return_value=mock_bleak_client_instance)
-    mock_async_exit_stack_instance.pop_all = MagicMock(return_value=mock_pop_all_result)
-
-    # Patch BleakClient and AsyncExitStack in the module where GenericBTDevice uses them
-    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=mock_bleak_client_instance) as mock_bleak_client_class, \
-         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=mock_async_exit_stack_instance) as mock_async_exit_stack_class:
-
-        device = GenericBTDevice(mock_ble_device)
-
-        # Call the method under test
-        await device.write_gatt(TEST_UUID, TEST_DATA)
-
-        # Assertions
-        # 1. get_client is called (first time, then by retry)
-        # First call to get_client (initial attempt)
-        mock_async_exit_stack_instance.enter_async_context.assert_any_call(mock_bleak_client_class(mock_ble_device, timeout=30))
-
-        # Second call to get_client (after retry)
-        # enter_async_context would be called again by the get_client in retry
-        assert mock_async_exit_stack_instance.enter_async_context.call_count == 2
-
-        # write_gatt_char called twice
-        assert mock_bleak_client_instance.write_gatt_char.call_count == 2
-        # Check arguments for write_gatt_char (optional, but good for completeness)
-        expected_uuid = UUID("{" + TEST_UUID + "}")
-        expected_data_bytes = bytearray.fromhex(TEST_DATA)
-        mock_bleak_client_instance.write_gatt_char.assert_any_call(expected_uuid, expected_data_bytes, True)
-
-        # pop_all().aclose() was called once for the disconnect
-        mock_async_exit_stack_instance.pop_all.assert_called_once()
-        mock_aclose.assert_called_once()
-
-        # Verify BleakClient was instantiated twice (once initially, once on retry)
-        assert mock_bleak_client_class.call_count == 2
+# Helper to create a mock AsyncExitStack
+def create_mock_async_exit_stack(client_to_return):
+    stack = MagicMock(spec=AsyncExitStack)
+    stack.enter_async_context = AsyncMock(return_value=client_to_return)
+    aclose_mock = AsyncMock()
+    pop_all_mock = MagicMock()
+    pop_all_mock.aclose = aclose_mock
+    stack.pop_all = MagicMock(return_value=pop_all_mock)
+    return stack, aclose_mock
 
 @pytest.mark.asyncio
-async def test_write_gatt_retry_fails():
-    """Test write_gatt when the first attempt and retry both fail."""
-    mock_ble_device = MagicMock(spec=BLEDevice)
-    mock_ble_device.address = "test_address"
+async def test_write_gatt_no_error_succeeds_first_try():
+    """1. Test GATT write success on the first attempt without any errors."""
+    mock_ble_device = create_mock_ble_device()
+    ble_client_mock = create_mock_bleak_client_instance()
+    ble_client_mock.write_gatt_char = AsyncMock(return_value=None) # Success
 
-    mock_bleak_client_instance = AsyncMock(spec=BleakClient)
-    mock_bleak_client_instance.write_gatt_char = AsyncMock(
-        side_effect=[
-            BleakError("Service Discovery has not been performed"), # First call
-            BleakError("Another error after retry")  # Second call
-        ]
-    )
+    exit_stack_mock, _ = create_mock_async_exit_stack(ble_client_mock)
 
-    mock_aclose = AsyncMock()
-    mock_pop_all_result = MagicMock()
-    mock_pop_all_result.aclose = mock_aclose
-
-    mock_async_exit_stack_instance = MagicMock(spec=AsyncExitStack)
-    mock_async_exit_stack_instance.enter_async_context = AsyncMock(return_value=mock_bleak_client_instance)
-    mock_async_exit_stack_instance.pop_all = MagicMock(return_value=mock_pop_all_result)
-
-    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=mock_bleak_client_instance) as mock_bleak_client_class, \
-         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=mock_async_exit_stack_class):
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=ble_client_mock) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
 
         device = GenericBTDevice(mock_ble_device)
+        await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
 
-        with pytest.raises(BleakError, match="Another error after retry"):
-            await device.write_gatt(TEST_UUID, TEST_DATA)
+        PatchedBleakClient.assert_called_once_with(mock_ble_device, timeout=30)
+        ble_client_mock.write_gatt_char.assert_called_once()
+        MockSleep.assert_not_called() # No retries, so no sleep
 
-        # Assertions
-        assert mock_async_exit_stack_instance.enter_async_context.call_count == 2
-        assert mock_bleak_client_instance.write_gatt_char.call_count == 2
-
-        expected_uuid = UUID("{" + TEST_UUID + "}")
-        expected_data_bytes = bytearray.fromhex(TEST_DATA)
-        mock_bleak_client_instance.write_gatt_char.assert_any_call(expected_uuid, expected_data_bytes, True)
-
-        mock_async_exit_stack_instance.pop_all.assert_called_once()
-        mock_aclose.assert_called_once()
-        assert mock_bleak_client_class.call_count == 2
+        # Check that no retry-related logs were made
+        for log_call in MockLogger.warning.call_args_list + MockLogger.info.call_args_list:
+            assert "retry" not in log_call.args[0].lower()
+            assert "service discovery" not in log_call.args[0].lower()
 
 @pytest.mark.asyncio
-async def test_write_gatt_other_bleak_error():
-    """Test write_gatt when a BleakError not related to service discovery occurs."""
-    mock_ble_device = MagicMock(spec=BLEDevice)
-    mock_ble_device.address = "test_address"
+async def test_write_gatt_service_discovery_succeeds_first_retry():
+    """2. Service discovery error, then success on 1st retry attempt."""
+    mock_ble_device = create_mock_ble_device()
 
-    mock_bleak_client_instance = AsyncMock(spec=BleakClient)
-    mock_bleak_client_instance.write_gatt_char = AsyncMock(
-        side_effect=BleakError("Some other Bleak error")
-    )
+    client_try1 = create_mock_bleak_client_instance()
+    client_try1.write_gatt_char = AsyncMock(side_effect=BleakError(SERVICE_DISCOVERY_ERROR_MSG))
 
-    mock_async_exit_stack_instance = MagicMock(spec=AsyncExitStack)
-    mock_async_exit_stack_instance.enter_async_context = AsyncMock(return_value=mock_bleak_client_instance)
-    # pop_all should not be called in this scenario
-    mock_async_exit_stack_instance.pop_all = MagicMock()
+    client_try2 = create_mock_bleak_client_instance()
+    client_try2.write_gatt_char = AsyncMock(return_value=None) # Success on retry
+
+    # BleakClient constructor will be called twice
+    PatchedBleakClient_side_effect = [client_try1, client_try2]
+
+    exit_stack_mock, aclose_mock = create_mock_async_exit_stack(client_try1) # Initial stack setup
+    # enter_async_context will be called again for the second client
+    exit_stack_mock.enter_async_context.side_effect = [client_try1, client_try2]
 
 
-    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=mock_bleak_client_instance) as mock_bleak_client_class, \
-         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=mock_async_exit_stack_instance):
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', side_effect=PatchedBleakClient_side_effect) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
 
         device = GenericBTDevice(mock_ble_device)
+        await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
 
-        with pytest.raises(BleakError, match="Some other Bleak error"):
-            await device.write_gatt(TEST_UUID, TEST_DATA)
+        assert PatchedBleakClient.call_count == 2 # Initial + 1 retry
+        assert exit_stack_mock.enter_async_context.call_count == 2
+        assert client_try1.write_gatt_char.call_count == 1 # First attempt
+        assert client_try2.write_gatt_char.call_count == 1 # Retry attempt
 
-        # Assertions
-        # Client is fetched once
-        mock_async_exit_stack_instance.enter_async_context.assert_called_once()
-        # Write is attempted once
-        mock_bleak_client_instance.write_gatt_char.assert_called_once()
-        # Disconnect (pop_all) should NOT be called
-        mock_async_exit_stack_instance.pop_all.assert_not_called()
-        # BleakClient class called once
-        mock_bleak_client_class.assert_called_once()
+        MockSleep.assert_called_once_with(GenericBTDevice.SERVICE_DISCOVERY_RETRY_DELAY)
+        aclose_mock.assert_called_once() # From the cleanup before retry
 
-# Example of how to test logger calls (can be integrated into above tests)
+        # Log checks
+        assert MockLogger.warning.call_args_list[0].args[0].startswith("Service discovery error for %s during GATT write.")
+        assert MockLogger.info.call_args_list[0].args[0].startswith("Retry attempt 1/%s for %s after %s sec delay...")
+        assert MockLogger.debug.call_args_list[2].args[0].startswith("Attempting reconnect for retry 1...") # 0,1 are initial connect
+        assert MockLogger.debug.call_args_list[3].args[0].startswith("Reconnected for retry 1.")
+        assert MockLogger.info.call_args_list[1].args[0].startswith("GATT write successful on retry 1/%s for %s.")
+
+
 @pytest.mark.asyncio
-async def test_write_gatt_retry_succeeds_with_logging(caplog):
-    """Test write_gatt retry success and checks for specific log messages."""
-    # Setup mocks similar to test_write_gatt_retry_succeeds
-    mock_ble_device = MagicMock(spec=BLEDevice)
-    mock_ble_device.address = "test_address_logging"
+async def test_write_gatt_service_discovery_succeeds_last_retry():
+    """3. Service discovery error, success on the last possible retry attempt."""
+    mock_ble_device = create_mock_ble_device()
+    max_retries = GenericBTDevice.MAX_SERVICE_DISCOVERY_RETRIES
 
-    mock_bleak_client_instance = AsyncMock(spec=BleakClient)
-    mock_bleak_client_instance.write_gatt_char = AsyncMock(
-        side_effect=[
-            BleakError("Service Discovery has not been performed"),
-            None
-        ]
-    )
-    # ... other mocks for AsyncExitStack ...
-    mock_aclose = AsyncMock()
-    mock_pop_all_result = MagicMock()
-    mock_pop_all_result.aclose = mock_aclose
+    # Initial client fails with service discovery
+    initial_client = create_mock_bleak_client_instance()
+    initial_client.write_gatt_char = AsyncMock(side_effect=BleakError(SERVICE_DISCOVERY_ERROR_MSG))
 
-    mock_async_exit_stack_instance = MagicMock(spec=AsyncExitStack)
-    mock_async_exit_stack_instance.enter_async_context = AsyncMock(return_value=mock_bleak_client_instance)
-    mock_async_exit_stack_instance.pop_all = MagicMock(return_value=mock_pop_all_result)
+    # Subsequent retry clients also fail, except the last one
+    retry_clients_effects = []
+    # All but the last retry attempt's write_gatt_char will fail
+    for i in range(max_retries - 1):
+        client = create_mock_bleak_client_instance()
+        client.write_gatt_char = AsyncMock(side_effect=BleakError(f"Some other error on retry {i+1}"))
+        retry_clients_effects.append(client)
 
-    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=mock_bleak_client_instance), \
-         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=mock_async_exit_stack_instance), \
-         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as mock_logger: # Patch logger
+    # Last retry client succeeds
+    last_retry_client = create_mock_bleak_client_instance()
+    last_retry_client.write_gatt_char = AsyncMock(return_value=None)
+    retry_clients_effects.append(last_retry_client)
+
+    PatchedBleakClient_side_effect = [initial_client] + retry_clients_effects
+
+    exit_stack_mock, aclose_mock = create_mock_async_exit_stack(None)
+    exit_stack_mock.enter_async_context.side_effect = PatchedBleakClient_side_effect
+
+
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', side_effect=PatchedBleakClient_side_effect) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
 
         device = GenericBTDevice(mock_ble_device)
-        await device.write_gatt(TEST_UUID, TEST_DATA)
+        await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
 
-        # Assert logger calls
-        # Example: Check if the specific error log for service discovery was called
-        mock_logger.error.assert_any_call(
-            "Service discovery error during write_gatt: %s. Reconnecting and retrying.",
-            BleakError("Service Discovery has not been performed") # This needs to be the actual error instance or match via a custom matcher
+        assert PatchedBleakClient.call_count == 1 + max_retries
+        assert initial_client.write_gatt_char.call_count == 1
+        for i in range(max_retries):
+            assert retry_clients_effects[i].write_gatt_char.call_count == 1
+
+        assert MockSleep.call_count == max_retries
+        assert aclose_mock.call_count == max_retries
+
+        # Check final success log
+        success_log_found = any(
+            f"GATT write successful on retry {max_retries}/{max_retries}" in log_call.args[0]
+            for log_call in MockLogger.info.call_args_list
         )
-        # This specific check might be tricky due to the error instance comparison.
-        # A more robust way for log checking might involve checking parts of the string.
+        assert success_log_found
 
-        # Check that write_gatt_char was called twice
-        assert mock_bleak_client_instance.write_gatt_char.call_count == 2
-        # Check that pop_all().aclose() was called
-        mock_async_exit_stack_instance.pop_all.assert_called_once()
-        mock_aclose.assert_called_once()
 
-# Note: For the logger test, directly comparing BleakError instances in assert_any_call might be flaky.
-# It's often better to check `call_args` for string contents or use `caplog` fixture from pytest for more robust log testing.
-# The provided logger test above uses mock_logger.error.assert_any_call, which has this caveat.
-# Using caplog:
-# import logging
-# _LOGGER.propagate = True # if logs not showing up with caplog
-# async def test_write_gatt_retry_succeeds_with_caplog(caplog):
-#     caplog.set_level(logging.ERROR, logger="custom_components.glowswitch.generic_bt_api.device")
-#     # ... rest of the test setup from test_write_gatt_retry_succeeds ...
-#     await device.write_gatt(TEST_UUID, TEST_DATA)
-#     assert "Service discovery error during write_gatt" in caplog.text
-#     assert "Reconnecting and retrying" in caplog.text
+@pytest.mark.asyncio
+async def test_write_gatt_service_discovery_all_retries_fail_write():
+    """4. Service discovery error, all retry attempts fail (persistent write_gatt_char failure)."""
+    mock_ble_device = create_mock_ble_device()
+    max_retries = GenericBTDevice.MAX_SERVICE_DISCOVERY_RETRIES
+    final_error_msg = "Persistent error on last retry write"
 
-# For now, I'll keep the logger test simpler and focus on the core logic tests.
-# The `test_write_gatt_retry_succeeds_with_logging` is more of an advanced example.
-# I will remove the direct logger assertion from the first two tests for simplicity and rely on the other assertions
-# to confirm correct flow, which implies correct logging.
-# The third test for "other bleak error" correctly asserts pop_all is NOT called.
+    initial_client = create_mock_bleak_client_instance()
+    initial_client.write_gatt_char = AsyncMock(side_effect=BleakError(SERVICE_DISCOVERY_ERROR_MSG))
 
-# Corrected structure for the first two tests (removing direct mock_logger and focusing on behavior)
+    retry_clients_effects = []
+    for i in range(max_retries -1): # All but last fail with generic error
+        client = create_mock_bleak_client_instance()
+        client.write_gatt_char = AsyncMock(side_effect=BleakError(f"Write error on retry {i+1}"))
+        retry_clients_effects.append(client)
 
-# (Re-pasting the first two tests here without direct logger assertion for clarity of what will be created)
-# test_write_gatt_retry_succeeds would be:
-# ... (setup as above)
-#    with patch(...), patch(...):
-#        device = GenericBTDevice(mock_ble_device)
-#        await device.write_gatt(TEST_UUID, TEST_DATA)
-#        assert mock_async_exit_stack_instance.enter_async_context.call_count == 2
-#        assert mock_bleak_client_instance.write_gatt_char.call_count == 2
-#        mock_async_exit_stack_instance.pop_all.assert_called_once()
-#        mock_aclose.assert_called_once()
-#        assert mock_bleak_client_class.call_count == 2
+    last_retry_client = create_mock_bleak_client_instance() # Last one also fails
+    last_retry_client.write_gatt_char = AsyncMock(side_effect=BleakError(final_error_msg))
+    retry_clients_effects.append(last_retry_client)
 
-# test_write_gatt_retry_fails would be:
-# ... (setup as above)
-#    with patch(...), patch(...):
-#        device = GenericBTDevice(mock_ble_device)
-#        with pytest.raises(BleakError, match="Another error after retry"):
-#            await device.write_gatt(TEST_UUID, TEST_DATA)
-#        assert mock_async_exit_stack_instance.enter_async_context.call_count == 2
-#        assert mock_bleak_client_instance.write_gatt_char.call_count == 2
-#        mock_async_exit_stack_instance.pop_all.assert_called_once()
-#        mock_aclose.assert_called_once()
-#        assert mock_bleak_client_class.call_count == 2
+    PatchedBleakClient_side_effect = [initial_client] + retry_clients_effects
 
-# The final version of the file will include these three distinct tests:
-# 1. test_write_gatt_retry_succeeds
-# 2. test_write_gatt_retry_fails
-# 3. test_write_gatt_other_bleak_error
-# And a placeholder for the logging test if I decide to refine it later, or use caplog.
-# For now, I'll include the three core logic tests.
+    exit_stack_mock, aclose_mock = create_mock_async_exit_stack(None)
+    exit_stack_mock.enter_async_context.side_effect = PatchedBleakClient_side_effect
 
-# The provided code block will contain the refined versions of these tests.
-# I've also decided to patch `_LOGGER` within `device.py` to check for the specific error message.
-# This is a bit more direct than `caplog` for this specific case, but `caplog` is generally more robust.
-# The patch for `_LOGGER` is added to the test cases.
-# The `test_write_gatt_retry_succeeds_with_logging` is removed to avoid redundancy if other tests check logging.
-# I will add logger checks to the first two tests.
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', side_effect=PatchedBleakClient_side_effect) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
 
-# Final plan for the file content:
-# - Imports
-# - Constants TEST_UUID, TEST_DATA
-# - test_write_gatt_retry_succeeds (with logger check)
-# - test_write_gatt_retry_fails (with logger check)
-# - test_write_gatt_other_bleak_error (checks pop_all not called, no specific error log needed here beyond what Bleak/pytest does)
+        device = GenericBTDevice(mock_ble_device)
+        with pytest.raises(BleakError, match=final_error_msg):
+            await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
 
-# One detail: `mock_bleak_client_class(mock_ble_device, timeout=30)` in `assert_any_call`
-# The `BleakClient` is instantiated within `get_client`. The patched `BleakClient` class itself is what we
-# are checking the call against. So it should be `mock_bleak_client_class` not `mock_bleak_client_instance`.
-# And `BleakClient` (the class) is called, then it returns `mock_bleak_client_instance`.
-# So the assertion `mock_async_exit_stack_instance.enter_async_context.assert_any_call(mock_bleak_client_class(mock_ble_device, timeout=30))`
-# is incorrect. `enter_async_context` is called with the *instance* that `BleakClient()` returns.
-# The `BleakClient` *class* is patched to return `mock_bleak_client_instance`.
-# So `mock_async_exit_stack_instance.enter_async_context.assert_any_call(mock_bleak_client_instance)` is more appropriate.
-# And `mock_bleak_client_class.assert_any_call(mock_ble_device, timeout=30)` to check how the client was created.
+        assert PatchedBleakClient.call_count == 1 + max_retries
+        assert initial_client.write_gatt_char.call_count == 1
+        for client in retry_clients_effects:
+            assert client.write_gatt_char.call_count == 1
 
-# Corrected assertions for client creation and usage:
-# - `mock_bleak_client_class.assert_any_call(mock_ble_device, timeout=30)` (checks BleakClient constructor call)
-# - `mock_async_exit_stack_instance.enter_async_context.assert_any_call(mock_bleak_client_instance)` (checks what's passed to stack)
+        assert MockSleep.call_count == max_retries
+        assert MockLogger.error.call_args_list[-1].args[0].startswith(f"All {max_retries} retry attempts failed for GATT write")
 
-# Let's refine the code block.I've thought through the test cases and the necessary mocks. I will create the `custom_components/glowswitch/tests/test_device.py` file with three main test scenarios for `write_gatt`:
-1.  **Retry Succeeds**: First `write_gatt_char` call fails with a "Service Discovery" `BleakError`, the device reconnects, and the second call succeeds. Logger calls will also be checked.
-2.  **Retry Fails**: First call fails similarly, but the second call (after reconnect) also fails with a different `BleakError`, which should then be re-raised. Logger calls for the initial error will be checked.
-3.  **Other Bleak Error**: `write_gatt_char` fails immediately with a `BleakError` not related to service discovery. This error should be re-raised without a retry attempt.
 
-I will use `unittest.mock.patch` to mock `BleakClient`, `AsyncExitStack`, and the `_LOGGER` instance within the `device.py` module.
+@pytest.mark.asyncio
+async def test_write_gatt_service_discovery_get_client_fails_last_retry():
+    """5. Service discovery error, get_client() fails during the last retry attempt."""
+    mock_ble_device = create_mock_ble_device()
+    max_retries = GenericBTDevice.MAX_SERVICE_DISCOVERY_RETRIES
+    reconnect_fail_error_msg = "Timeout on connect" # Match IdealLedTimeout message
 
-Here is the content of the new test file:
+    initial_client = create_mock_bleak_client_instance()
+    initial_client.write_gatt_char = AsyncMock(side_effect=BleakError(SERVICE_DISCOVERY_ERROR_MSG))
+
+    # All retry attempts will involve a BleakClient that successfully constructs,
+    # but the *last* attempt's get_client call will fail internally due to BleakClient constructor raising an error.
+    bleak_client_constructor_side_effects = [initial_client] # First connect
+    for _ in range(max_retries -1 ): # Successful reconnects for earlier retries
+         bleak_client_constructor_side_effects.append(create_mock_bleak_client_instance())
+    # Last retry's BleakClient constructor will fail leading to IdealLedTimeout from get_client
+    bleak_client_constructor_side_effects.append(asyncio.TimeoutError("Simulated get_client timeout on last retry"))
+
+    # write_gatt_char behavior for clients that do connect during retries (all but the last)
+    # The clients from bleak_client_constructor_side_effects[1] to bleak_client_constructor_side_effects[-2]
+    # need their write_gatt_char mocked to also fail, to ensure the loop continues to the last failing get_client.
+    # This setup is getting complex. Let's simplify: get_client fails on the *first* retry.
+
+    # Simplified: get_client fails on the first retry attempt.
+    # Test if the loop runs MAX_SERVICE_DISCOVERY_RETRIES times and then raises the error from get_client.
+    # This is tricky because the problem states "if it's the last retry, this IdealLedTimeout is raised."
+    # The current code raises the *last encountered* error. So if get_client fails on retry 1,
+    # and then subsequent retries also have get_client failing, the error from the *last* get_client fail will be raised.
+
+    # Let's test the scenario: get_client fails on the *last* retry attempt.
+    # All prior retries will have write_gatt_char failing.
+
+    client_effects_for_constructor = [initial_client] # Initial successful connect
+    client_write_effects_during_retry = []
+
+    for i in range(max_retries -1): # Retries 1 to MAX_RETRIES-1
+        retry_client = create_mock_bleak_client_instance()
+        retry_client.write_gatt_char = AsyncMock(side_effect=BleakError(f"Write failed retry {i+1}"))
+        client_effects_for_constructor.append(retry_client)
+        client_write_effects_during_retry.append(retry_client.write_gatt_char)
+
+    # For the last retry, the BleakClient constructor will raise an error
+    client_effects_for_constructor.append(asyncio.TimeoutError("Timeout during get_client on last retry"))
+
+    exit_stack_mock, aclose_mock = create_mock_async_exit_stack(None)
+    # enter_async_context will be called for initial_client and each successful retry_client
+    successful_clients = [c for c in client_effects_for_constructor if isinstance(c, AsyncMock)]
+    exit_stack_mock.enter_async_context.side_effect = successful_clients
+
+
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', side_effect=client_effects_for_constructor) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
+
+        device = GenericBTDevice(mock_ble_device)
+        with pytest.raises(IdealLedTimeout, match=reconnect_fail_error_msg):
+            await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
+
+        assert PatchedBleakClient.call_count == 1 + max_retries # Initial + all retries attempted instantiation
+        assert initial_client.write_gatt_char.call_count == 1
+        for write_mock in client_write_effects_during_retry: # write_gatt_char for retries before get_client failed
+            assert write_mock.call_count == 1
+
+        assert MockSleep.call_count == max_retries # Sleep before each retry attempt
+        assert MockLogger.error.call_args_list[-1].args[0].startswith(f"All {max_retries} retry attempts failed for GATT write")
+        assert reconnect_fail_error_msg in str(MockLogger.error.call_args_list[-1].args[2]) # Check last error in log
+
+
+@pytest.mark.asyncio
+async def test_write_gatt_non_service_discovery_bleak_error():
+    """6. Non-service-discovery BleakError, no retry logic triggered."""
+    mock_ble_device = create_mock_ble_device()
+    error_message = "Some other Bleak error, not service discovery"
+
+    ble_client_mock = create_mock_bleak_client_instance()
+    ble_client_mock.write_gatt_char = AsyncMock(side_effect=BleakError(error_message))
+
+    exit_stack_mock, _ = create_mock_async_exit_stack(ble_client_mock)
+
+    with patch('custom_components.glowswitch.generic_bt_api.device.BleakClient', return_value=ble_client_mock) as PatchedBleakClient, \
+         patch('custom_components.glowswitch.generic_bt_api.device.AsyncExitStack', return_value=exit_stack_mock), \
+         patch('custom_components.glowswitch.generic_bt_api.device._LOGGER') as MockLogger, \
+         patch('asyncio.sleep', new_callable=AsyncMock) as MockSleep:
+
+        device = GenericBTDevice(mock_ble_device)
+        with pytest.raises(BleakError, match=error_message):
+            await device.write_gatt(TEST_UUID_STR, TEST_DATA_HEX)
+
+        PatchedBleakClient.assert_called_once()
+        ble_client_mock.write_gatt_char.assert_called_once()
+        MockSleep.assert_not_called()
+
+        # Ensure no service discovery retry logs were made
+        assert not any("Service discovery error for" in call_item.args[0] for call_item in MockLogger.warning.call_args_list)
+        assert not any("Retry attempt" in call_item.args[0] for call_item in MockLogger.info.call_args_list)
+
+# Remove old tests that are now superseded or less specific
+# The tests test_write_gatt_retry_succeeds, test_write_gatt_retry_fails,
+# test_write_gatt_other_bleak_error, test_write_gatt_retry_succeeds_with_logging,
+# and test_write_gatt_reconnect_fails from the previous file version are covered by the new, more detailed tests.
+# This overwrite will replace them.
