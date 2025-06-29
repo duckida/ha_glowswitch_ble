@@ -26,3 +26,8 @@ class GenericBTEntity(PassiveBluetoothCoordinatorEntity[GenericBTCoordinator]): 
             "connections":{(dr.CONNECTION_BLUETOOTH, self._address)},
             "name":coordinator.device_name
         }
+
+    @property
+    def is_connected(self) -> bool:
+        """Return the connection status of the device."""
+        return not self.coordinator._was_unavailable

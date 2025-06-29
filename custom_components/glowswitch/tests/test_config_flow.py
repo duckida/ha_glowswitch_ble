@@ -237,5 +237,3 @@ async def test_user_step_already_configured(hass: HomeAssistant, mock_ha_config_
 # correctly identifies a device as "glowdim" (e.g., via Service UUID), it will store "glowdim"
 # in the entry.data. The light entity tests then pick this up.
 # No changes seem necessary for test_light.py based on this review.
-
-"""
