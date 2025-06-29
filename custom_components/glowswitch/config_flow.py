@@ -13,7 +13,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import DOMAIN
-from .generic_bt_api.device import GenericBTDevice # Changed import path and class name
+from .generic_bt_api.device import GenericBTDevice, IdealLedTimeout, IdealLedBleakError # Changed import path and class name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,11 +75,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 device = GenericBTDevice(processed_discovery_info.device) # Changed class instantiation
                 try:
-                    await device.update()
-                except BLEAK_EXCEPTIONS:
+                    await device.update() # Assuming this might perform a connection attempt in the future
+                except (IdealLedTimeout, IdealLedBleakError): # Catch specific errors
                     errors["base"] = "cannot_connect"
                 except Exception:  # pylint: disable=broad-except
-                    _LOGGER.exception("Unexpected error")
+                    _LOGGER.exception("Unexpected error during device validation")
                     errors["base"] = "unknown"
                 else:
                     await device.stop()

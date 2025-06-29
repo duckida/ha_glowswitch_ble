@@ -7,6 +7,16 @@
   "iot_class": "local_push",
   "integration_type": "device",
   "version": "1.0.0",
+  "bluetooth": [
+    {
+      "connectable": true,
+      "service_data_uuid": "12345678-1234-5678-1234-56789abcdef0" 
+    },
+    {
+      "connectable": true,
+      "service_data_uuid": "12345678-1234-5678-1234-56789abcdefA"
+    }
+  ],
   "documentation": "https://github.com/duckida/ha_glowswitch_ble",
   "issue_tracker": "https://github.com/duckida/ha_glowswitch_ble/issues"
 }
