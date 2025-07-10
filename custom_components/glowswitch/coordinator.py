@@ -66,6 +66,7 @@ class GlowSwitchCoordinator(PassiveBluetoothDataUpdateCoordinator):
         """Handle a Bluetooth event to update availability."""
         super()._async_handle_bluetooth_event(service_info, change)
         self.ble_device = service_info.device
+        self.device.update_device(self.ble_device)
         _LOGGER.debug(f"Availability updated for {self.device_name}: {self.available}")
         self._ready_event.set()
 

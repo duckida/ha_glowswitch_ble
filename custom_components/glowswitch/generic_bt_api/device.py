@@ -30,6 +30,10 @@ class GlowSwitchDevice:
         self._ble_device = ble_device
         self._lock = asyncio.Lock()
 
+    def update_device(self, ble_device):
+        """Update the BLEDevice object."""
+        self._ble_device = ble_device
+
     async def send_command(self, data: bytearray):
         """Connects to the device, sends a command, and disconnects."""
         async with self._lock:
@@ -45,6 +49,9 @@ class GlowSwitchDevice:
                     f"Timeout sending command to {self._ble_device.address}"
                 ) from exc
             except BleakError as exc:
+                _LOGGER.exception(
+                    f"BleakError sending command to {self._ble_device.address}"
+                )
                 raise GlowSwitchBleakError(
                     f"Error sending command to {self._ble_device.address}: {exc}"
                 ) from exc
