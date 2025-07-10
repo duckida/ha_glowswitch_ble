@@ -40,13 +40,23 @@ class GenericBTDevice:
                     uuid_str = "{" + target_uuid + "}"
                     uuid = UUID(uuid_str)
                     data_as_bytes = bytearray.fromhex(data)
-                    await client.write_gatt_char(uuid, data_as_bytes, True)
-                    _LOGGER.debug(f"Data written to {uuid_str}")
+                    try:
+                        _LOGGER.debug(f"Attempting write to {uuid_str} with response")
+                        await client.write_gatt_char(uuid, data_as_bytes, response=True)
+                        _LOGGER.debug(f"Data written to {uuid_str} with response successfully")
+                    except BleakError as exc_response:
+                        _LOGGER.warning(f"BleakError on write with response to {uuid_str}: {exc_response}. Retrying without response.")
+                        try:
+                            await client.write_gatt_char(uuid, data_as_bytes, response=False)
+                            _LOGGER.debug(f"Data written to {uuid_str} without response successfully")
+                        except BleakError as exc_no_response:
+                            _LOGGER.error(f"BleakError on write without response to {uuid_str}: {exc_no_response}")
+                            raise IdealLedBleakError(f"BleakError on write to {self._ble_device.address} (both with and without response failed)") from exc_no_response
                 except asyncio.TimeoutError as exc:
                     _LOGGER.warning(f"Timeout on write to {self._ble_device.address}: {exc}")
                     raise IdealLedTimeout(f"Timeout on write to {self._ble_device.address}") from exc
-                except BleakError as exc:
-                    _LOGGER.warning(f"BleakError on write to {self._ble_device.address}: {exc}")
+                except BleakError as exc: # Should ideally be caught by the inner try/excepts, but as a fallback.
+                    _LOGGER.error(f"Unexpected BleakError during write sequence to {self._ble_device.address}: {exc}")
                     raise IdealLedBleakError(f"BleakError on write to {self._ble_device.address}") from exc
 
     async def read_gatt(self, target_uuid):
