@@ -10,11 +10,11 @@
   "bluetooth": [
     {
       "connectable": true,
-      "service_data_uuid": "12345678-1234-5678-1234-56789abcdef0" 
+      "service_uuid": "12345678-1234-5678-1234-56789abcdef0"
     },
     {
       "connectable": true,
-      "service_data_uuid": "12345678-1234-5678-1234-56789abcdefA"
+      "service_uuid": "12345678-1234-5678-1234-56789abcdefa"
     }
   ],
   "documentation": "https://github.com/duckida/ha_glowswitch_ble",

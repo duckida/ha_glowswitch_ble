@@ -1,4 +1,4 @@
-"""Support for generic bluetooth devices."""
+"""Support for GlowSwitch bluetooth devices."""
 
 import logging
 
@@ -9,25 +9,30 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN
-from .coordinator import GenericBTCoordinator # Changed import
-from .generic_bt_api.device import GenericBTDevice # Changed import path and class name
+from .coordinator import GlowSwitchCoordinator
+from .generic_bt_api.device import GlowSwitchDevice
 
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.LIGHT]
+PLATFORMS = [Platform.LIGHT]
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Generic BT from a config entry."""
+    """Set up GlowSwitch from a config entry."""
     assert entry.unique_id is not None
     hass.data.setdefault(DOMAIN, {})
     address: str = entry.data[CONF_ADDRESS]
     ble_device = bluetooth.async_ble_device_from_address(hass, address.upper(), True)
     if not ble_device:
-        raise ConfigEntryNotReady(f"Could not find GlowSwitch Device with address {address}") # Message can remain specific
-    device = GenericBTDevice(ble_device) # Changed class instantiation
+        raise ConfigEntryNotReady(
+            f"Could not find GlowSwitch Device with address {address}"
+        )
+    device = GlowSwitchDevice(ble_device)
 
-    coordinator = hass.data[DOMAIN][entry.entry_id] = GenericBTCoordinator(hass, _LOGGER, ble_device, device, entry.title, entry.unique_id, True) # Changed class instantiation
+    coordinator = hass.data[DOMAIN][entry.entry_id] = GlowSwitchCoordinator(
+        hass, _LOGGER, ble_device, device, entry.title, entry.unique_id
+    )
     entry.async_on_unload(coordinator.async_start())
 
     if not await coordinator.async_wait_ready():
@@ -42,6 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

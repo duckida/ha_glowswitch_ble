@@ -1,4 +1,4 @@
-"""generic bt device"""
+"""GlowSwitch Bluetooth Device"""
 
 from uuid import UUID
 import asyncio
@@ -10,63 +10,41 @@ from bleak.exc import BleakError
 
 _LOGGER = logging.getLogger(__name__)
 
+LIGHT_CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"
 
-class IdealLedTimeout(Exception):
+
+class GlowSwitchTimeout(Exception):
     """Custom timeout exception."""
 
-class IdealLedBleakError(Exception):
+
+class GlowSwitchBleakError(Exception):
     """Custom BleakError wrapper."""
 
 
-class GenericBTDevice:
-    """Generic BT Device Class"""
+class GlowSwitchDevice:
+    """
+    Represents a GlowSwitch device, handling the connection and commands.
+    """
+
     def __init__(self, ble_device):
         self._ble_device = ble_device
         self._lock = asyncio.Lock()
 
-    async def update(self):
-        pass
-
-    async def stop(self):
-            pass
-
-    async def write_gatt(self, target_uuid, data):
+    async def send_command(self, data: bytearray):
+        """Connects to the device, sends a command, and disconnects."""
         async with self._lock:
-            async with AsyncExitStack() as stack:
-                try:
-                    client = await stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
-                    _LOGGER.debug(f"Connected to {self._ble_device.address} for write")
-
-                    uuid_str = "{" + target_uuid + "}"
-                    uuid = UUID(uuid_str)
-                    data_as_bytes = bytearray.fromhex(data)
-                    await client.write_gatt_char(uuid, data_as_bytes, True)
-                    _LOGGER.debug(f"Data written to {uuid_str}")
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.warning(f"Timeout on write to {self._ble_device.address}: {exc}")
-                    raise IdealLedTimeout(f"Timeout on write to {self._ble_device.address}") from exc
-                except BleakError as exc:
-                    _LOGGER.warning(f"BleakError on write to {self._ble_device.address}: {exc}")
-                    raise IdealLedBleakError(f"BleakError on write to {self._ble_device.address}") from exc
-
-    async def read_gatt(self, target_uuid):
-        async with self._lock:
-            async with AsyncExitStack() as stack:
-                try:
-                    client = await stack.enter_async_context(BleakClient(self._ble_device, timeout=30))
-                    _LOGGER.debug(f"Connected to {self._ble_device.address} for read")
-
-                    uuid_str = "{" + target_uuid + "}"
-                    uuid = UUID(uuid_str)
-                    data = await client.read_gatt_char(uuid)
-                    _LOGGER.debug(f"Data read from {uuid_str}: {data.hex()}")
-                    return data
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.warning(f"Timeout on read from {self._ble_device.address}: {exc}")
-                    raise IdealLedTimeout(f"Timeout on read from {self._ble_device.address}") from exc
-                except BleakError as exc:
-                    _LOGGER.warning(f"BleakError on read from {self._ble_device.address}: {exc}")
-                    raise IdealLedBleakError(f"BleakError on read from {self._ble_device.address}") from exc
-
-    def update_from_advertisement(self, advertisement):
-        pass
+            try:
+                async with BleakClient(self._ble_device, timeout=15) as client:
+                    _LOGGER.debug(f"Connected to {self._ble_device.address} to send command: {data.hex()}")
+                    await client.write_gatt_char(
+                        LIGHT_CHARACTERISTIC_UUID, data, response=True
+                    )
+                    _LOGGER.debug("Command sent successfully")
+            except asyncio.TimeoutError as exc:
+                raise GlowSwitchTimeout(
+                    f"Timeout sending command to {self._ble_device.address}"
+                ) from exc
+            except BleakError as exc:
+                raise GlowSwitchBleakError(
+                    f"Error sending command to {self._ble_device.address}: {exc}"
+                ) from exc
