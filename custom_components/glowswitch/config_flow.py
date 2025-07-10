@@ -47,14 +47,26 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Test connection before showing confirmation
         device = GlowSwitchDevice(discovery_info.device)
-        try:
-            # A simple command to test connection, like turning it off (0x00)
-            await device.send_command(bytearray([0x00]))
-        except (GlowSwitchTimeout, GlowSwitchBleakError):
-            return self.async_abort(reason="cannot_connect")
-        except Exception:
-            _LOGGER.exception("Unexpected error during device validation")
-            return self.async_abort(reason="unknown")
+        # Retry connection test a few times
+        for i in range(3):  # Retry 3 times
+            try:
+                # A simple command to test connection, like turning it off (0x00)
+                await device.send_command(bytearray([0x00]))
+                break  # If successful, break the loop
+            except (GlowSwitchTimeout, GlowSwitchBleakError) as e:
+                _LOGGER.warning(
+                    "Connection test failed for %s (attempt %d/%d): %s",
+                    discovery_info.address,
+                    i + 1,
+                    3,
+                    e,
+                )
+                if i == 2:  # If last attempt failed
+                    return self.async_abort(reason="cannot_connect")
+                await asyncio.sleep(5)  # Wait 5 seconds before retrying
+            except Exception:
+                _LOGGER.exception("Unexpected error during device validation")
+                return self.async_abort(reason="unknown")
 
         self._discovery_info = discovery_info
         self.context["title_placeholders"] = {
